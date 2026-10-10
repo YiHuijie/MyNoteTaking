@@ -19,14 +19,32 @@ CORS(app)
 # register blueprints
 app.register_blueprint(user_bp, url_prefix='/api')
 app.register_blueprint(note_bp, url_prefix='/api')
-# configure database to use repository-root `database/app.db`
 ROOT_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-DB_PATH = os.path.join(ROOT_DIR, 'database', 'app.db')
-# ensure database directory exists
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
+def _database_url():
+    raw = None
+    try:
+        with open(os.path.join(ROOT_DIR, '.env'), encoding='utf-8') as env_file:
+            for line in env_file:
+                line = line.strip()
+                if line.startswith('Database URL:'):
+                    raw = line.split(':', 1)[1].strip()
+                    break
+    except OSError as exc:
+        raise RuntimeError('Database URL is not configured') from exc
+    if not raw:
+        raise RuntimeError('Database URL is not configured')
+    if raw.startswith('postgresql+psycopg://'):
+        return raw
+    if raw.startswith('postgresql://'):
+        return 'postgresql+psycopg://' + raw[len('postgresql://'):]
+    if raw.startswith('postgres://'):
+        return 'postgresql+psycopg://' + raw[len('postgres://'):]
+    raise RuntimeError('Database URL must start with postgresql://')
+
+app.config['SQLALCHEMY_DATABASE_URI'] = _database_url()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
 db.init_app(app)
 with app.app_context():
     db.create_all()
