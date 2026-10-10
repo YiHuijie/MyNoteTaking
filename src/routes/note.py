@@ -24,19 +24,22 @@ ALLOWED_TARGETS = {
 }
 
 def _load_translate_config():
-    api_key = endpoint = model = None
-    try:
-        with open(os.path.join(ROOT_DIR, '.env'), encoding='utf-8') as env_file:
-            for line in env_file:
-                line = line.strip()
-                if line.startswith('API key:'):
-                    api_key = line.split(':', 1)[1].strip()
-                elif line.startswith('Endpoint:'):
-                    endpoint = line.split(':', 1)[1].strip()
-                elif line.startswith('Model name:'):
-                    model = line.split(':', 1)[1].strip()
-    except OSError as exc:
-        raise RuntimeError('Translation is not configured') from exc
+    api_key = os.environ.get('TRANSLATE_API_KEY', '').strip()
+    endpoint = os.environ.get('TRANSLATE_ENDPOINT', '').strip()
+    model = os.environ.get('TRANSLATE_MODEL', '').strip()
+    if not (api_key and endpoint and model):
+        try:
+            with open(os.path.join(ROOT_DIR, '.env'), encoding='utf-8') as env_file:
+                for line in env_file:
+                    line = line.strip()
+                    if line.startswith('API key:') and not api_key:
+                        api_key = line.split(':', 1)[1].strip()
+                    elif line.startswith('Endpoint:') and not endpoint:
+                        endpoint = line.split(':', 1)[1].strip()
+                    elif line.startswith('Model name:') and not model:
+                        model = line.split(':', 1)[1].strip()
+        except OSError as exc:
+            raise RuntimeError('Translation is not configured') from exc
     if not api_key or not endpoint or not model:
         raise RuntimeError('Translation is not configured')
     return api_key, endpoint, model

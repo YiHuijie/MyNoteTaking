@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from flask import Flask, send_from_directory
 from flask_cors import CORS
+from sqlalchemy.pool import NullPool
 from src.models.user import db
 from src.routes.user import user_bp
 from src.routes.note import note_bp
@@ -21,19 +22,7 @@ app.register_blueprint(user_bp, url_prefix='/api')
 app.register_blueprint(note_bp, url_prefix='/api')
 ROOT_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 
-def _database_url():
-    raw = None
-    try:
-        with open(os.path.join(ROOT_DIR, '.env'), encoding='utf-8') as env_file:
-            for line in env_file:
-                line = line.strip()
-                if line.startswith('Database URL:'):
-                    raw = line.split(':', 1)[1].strip()
-                    break
-    except OSError as exc:
-        raise RuntimeError('Database URL is not configured') from exc
-    if not raw:
-        raise RuntimeError('Database URL is not configured')
+def _normalize_database_url(raw):
     if raw.startswith('postgresql+psycopg://'):
         return raw
     if raw.startswith('postgresql://'):
@@ -42,9 +31,32 @@ def _database_url():
         return 'postgresql+psycopg://' + raw[len('postgres://'):]
     raise RuntimeError('Database URL must start with postgresql://')
 
+def _database_url():
+    raw = os.environ.get('DATABASE_URL', '').strip()
+    if not raw:
+        try:
+            with open(os.path.join(ROOT_DIR, '.env'), encoding='utf-8') as env_file:
+                for line in env_file:
+                    line = line.strip()
+                    if line.startswith('Database URL:'):
+                        raw = line.split(':', 1)[1].strip()
+                        break
+        except OSError as exc:
+            raise RuntimeError('Database URL is not configured') from exc
+    if not raw:
+        raise RuntimeError('Database URL is not configured')
+    return _normalize_database_url(raw)
+
+def _engine_options():
+    options = {'pool_pre_ping': True}
+    if os.environ.get('VERCEL'):
+        options['poolclass'] = NullPool
+        options['connect_args'] = {'prepare_threshold': None}
+    return options
+
 app.config['SQLALCHEMY_DATABASE_URI'] = _database_url()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = _engine_options()
 db.init_app(app)
 with app.app_context():
     db.create_all()
