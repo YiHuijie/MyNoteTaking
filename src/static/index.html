@@ -422,6 +422,49 @@
     </div>
 
     <script>
+        const TRANSLATE_HINTS = {
+            'Simplified Chinese': {
+                keep: '已翻译。点击保存即可保留。',
+                same: '这篇笔记已经是所选语言。'
+            },
+            'English': {
+                keep: 'Translated. Click Save to keep it.',
+                same: 'This note is already in the selected language.'
+            },
+            'Japanese': {
+                keep: '翻訳しました。保存ボタンを押すと残ります。',
+                same: 'このノートはすでに選択した言語です。'
+            },
+            'Korean': {
+                keep: '번역되었습니다. 저장 버튼을 누르면 유지됩니다.',
+                same: '이 노트는 이미 선택한 언어입니다.'
+            },
+            'French': {
+                keep: 'Traduit. Cliquez sur Enregistrer pour le conserver.',
+                same: 'Cette note est déjà dans la langue sélectionnée.'
+            },
+            'German': {
+                keep: 'Übersetzt. Klicken Sie auf Speichern, um es zu behalten.',
+                same: 'Diese Notiz ist bereits in der ausgewählten Sprache.'
+            },
+            'Spanish': {
+                keep: 'Traducido. Pulsa Guardar para conservarlo.',
+                same: 'Esta nota ya está en el idioma seleccionado.'
+            },
+            'Portuguese': {
+                keep: 'Traduzido. Clique em Salvar para mantê-lo.',
+                same: 'Esta nota já está no idioma selecionado.'
+            },
+            'Russian': {
+                keep: 'Переведено. Нажмите «Сохранить», чтобы оставить текст.',
+                same: 'Эта заметка уже на выбранном языке.'
+            },
+            'Arabic': {
+                keep: 'تمت الترجمة. اضغط حفظ للإبقاء عليها.',
+                same: 'هذه الملاحظة باللغة المحددة بالفعل.'
+            }
+        };
+
         class NoteTaker {
             constructor() {
                 this.notes = [];
@@ -494,6 +537,7 @@
             }
 
             async selectNote(noteId) {
+                this.hideMessage();
                 const note = this.notes.find(n => n.id === noteId);
                 if (!note) return;
 
@@ -507,6 +551,7 @@
             }
 
             createNewNote() {
+                this.hideMessage();
                 this.currentNote = {
                     id: null,
                     title: '',
@@ -576,10 +621,11 @@
                     document.getElementById('noteTitle').value = translatedTitle;
                     document.getElementById('noteContent').value = translatedContent;
                     document.getElementById('editorTitle').textContent = translatedTitle || 'Untitled Note';
+                    const hints = TRANSLATE_HINTS[document.getElementById('targetLang').value] || TRANSLATE_HINTS.English;
                     if (translatedTitle === title && translatedContent === content) {
-                        this.showMessage('This note is already in the selected language.', 'info');
+                        this.showMessage(hints.same, 'info');
                     } else {
-                        this.showMessage('Translated. Click Save to keep it.', 'info');
+                        this.showMessage(hints.keep, 'info');
                     }
                 } catch (error) {
                     this.showMessage(`Error translating note: ${error.message}`, 'error');
