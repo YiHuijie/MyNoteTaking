@@ -1,10 +1,8 @@
 {
   "functions": {
-    "api/index.py": {
-      "maxDuration": 60
+    "src/main.py": {
+      "maxDuration": 60,
+      "includeFiles": "{src/static/**,prompt/**}"
     }
-  },
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
-  ]
+  }
 }
