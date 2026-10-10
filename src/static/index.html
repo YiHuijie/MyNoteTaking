@@ -168,6 +168,18 @@
         .editor-actions {
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .lang-select {
+            padding: 8px 10px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+            color: #333;
         }
 
         .btn {
@@ -198,6 +210,22 @@
         .btn-delete:hover {
             background: #c82333;
             transform: translateY(-1px);
+        }
+
+        .btn-translate {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-translate:hover {
+            background: #5a6fd8;
+            transform: translateY(-1px);
+        }
+
+        .btn-translate:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
         }
 
         .form-group {
@@ -283,6 +311,15 @@
             border: 1px solid #c3e6cb;
         }
 
+        .info {
+            background: #e7f1ff;
+            color: #0b3d91;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #b6d4fe;
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
             .main-content {
@@ -344,6 +381,19 @@
                 <div class="editor-header">
                     <h2 class="editor-title" id="editorTitle">Select a note to edit</h2>
                     <div class="editor-actions" id="editorActions" style="display: none;">
+                        <select class="lang-select" id="targetLang" aria-label="Target language">
+                            <option value="Simplified Chinese">中文</option>
+                            <option value="English">English</option>
+                            <option value="Japanese">日本語</option>
+                            <option value="Korean">한국어</option>
+                            <option value="French">Français</option>
+                            <option value="German">Deutsch</option>
+                            <option value="Spanish">Español</option>
+                            <option value="Portuguese">Português</option>
+                            <option value="Russian">Русский</option>
+                            <option value="Arabic">العربية</option>
+                        </select>
+                        <button class="btn btn-translate" id="translateBtn" type="button">Translate</button>
                         <button class="btn btn-save" id="saveBtn">💾 Save</button>
                         <button class="btn btn-delete" id="deleteBtn">🗑️ Delete</button>
                     </div>
@@ -387,6 +437,7 @@
 
             bindEvents() {
                 document.getElementById('newNoteBtn').addEventListener('click', () => this.createNewNote());
+                document.getElementById('translateBtn').addEventListener('click', () => this.translateNote());
                 document.getElementById('saveBtn').addEventListener('click', () => this.saveNote());
                 document.getElementById('deleteBtn').addEventListener('click', () => this.deleteNote());
                 document.getElementById('searchBox').addEventListener('input', (e) => this.searchNotes(e.target.value));
@@ -488,6 +539,54 @@
                 document.getElementById('editorActions').style.display = 'none';
                 document.getElementById('editorTitle').textContent = 'Select a note to edit';
                 this.currentNote = null;
+            }
+
+            async translateNote() {
+                if (!this.currentNote) {
+                    this.showMessage('Select a note to edit', 'error');
+                    return;
+                }
+
+                const title = document.getElementById('noteTitle').value;
+                const content = document.getElementById('noteContent').value;
+                if (!title.trim() && !content.trim()) {
+                    this.showMessage('Please enter a title or content', 'error');
+                    return;
+                }
+
+                const button = document.getElementById('translateBtn');
+                button.disabled = true;
+                button.textContent = 'Translating...';
+                this.showMessage('Translating...', 'loading');
+                try {
+                    const response = await fetch('/api/translate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title,
+                            content,
+                            target: document.getElementById('targetLang').value
+                        })
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(data.error || 'Failed to translate note');
+
+                    const translatedTitle = data.title ?? '';
+                    const translatedContent = data.content ?? '';
+                    document.getElementById('noteTitle').value = translatedTitle;
+                    document.getElementById('noteContent').value = translatedContent;
+                    document.getElementById('editorTitle').textContent = translatedTitle || 'Untitled Note';
+                    if (translatedTitle === title && translatedContent === content) {
+                        this.showMessage('This note is already in the selected language.', 'info');
+                    } else {
+                        this.showMessage('Translated. Click Save to keep it.', 'info');
+                    }
+                } catch (error) {
+                    this.showMessage(`Error translating note: ${error.message}`, 'error');
+                } finally {
+                    button.disabled = false;
+                    button.textContent = 'Translate';
+                }
             }
 
             async saveNote(isAutoSave = false) {
