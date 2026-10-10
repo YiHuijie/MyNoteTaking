@@ -1,7 +1,103 @@
+import json
+import os
+import re
+import urllib.error
+import urllib.request
+
 from flask import Blueprint, jsonify, request
 from src.models.note import Note, db
 
 note_bp = Blueprint('note', __name__)
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+ALLOWED_TARGETS = {
+    'Simplified Chinese',
+    'English',
+    'Japanese',
+    'Korean',
+    'French',
+    'German',
+    'Spanish',
+    'Portuguese',
+    'Russian',
+    'Arabic',
+}
+
+def _load_translate_config():
+    api_key = endpoint = model = None
+    try:
+        with open(os.path.join(ROOT_DIR, '.env'), encoding='utf-8') as env_file:
+            for line in env_file:
+                line = line.strip()
+                if line.startswith('API key:'):
+                    api_key = line.split(':', 1)[1].strip()
+                elif line.startswith('Endpoint:'):
+                    endpoint = line.split(':', 1)[1].strip()
+                elif line.startswith('Model name:'):
+                    model = line.split(':', 1)[1].strip()
+    except OSError as exc:
+        raise RuntimeError('Translation is not configured') from exc
+    if not api_key or not endpoint or not model:
+        raise RuntimeError('Translation is not configured')
+    return api_key, endpoint, model
+
+def _load_prompt(target, title, content):
+    path = os.path.join(ROOT_DIR, 'prompt', 'translate.md')
+    try:
+        with open(path, encoding='utf-8') as prompt_file:
+            template = prompt_file.read()
+    except OSError as exc:
+        raise RuntimeError('Translation prompt is missing') from exc
+    values = {'{target}': target, '{title}': title, '{content}': content}
+    parts = re.split(r'(\{target\}|\{title\}|\{content\})', template)
+    return ''.join(values.get(part, part) for part in parts)
+
+def _parse_translation(text):
+    text = text.strip()
+    if text.startswith('```'):
+        text = re.sub(r'^```(?:json)?\s*', '', text)
+        text = re.sub(r'\s*```$', '', text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError('Translation response was not valid JSON') from exc
+    if not isinstance(data, dict):
+        raise RuntimeError('Translation response was not valid JSON')
+    title = data.get('title', '')
+    content = data.get('content', '')
+    if not isinstance(title, str) or not isinstance(content, str):
+        raise RuntimeError('Translation response was not valid JSON')
+    return {'title': title, 'content': content}
+
+def _call_model(prompt):
+    api_key, endpoint, model = _load_translate_config()
+    body = json.dumps({
+        'model': model,
+        'temperature': 0,
+        'stream': False,
+        'messages': [{'role': 'user', 'content': prompt}],
+    }).encode()
+    req = urllib.request.Request(
+        endpoint,
+        data=body,
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            payload = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f'Translation service returned {exc.code}') from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise RuntimeError('Translation service is unavailable') from exc
+    try:
+        text = payload['choices'][0]['message']['content']
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError('Translation response was incomplete') from exc
+    return _parse_translation(text)
 
 @note_bp.route('/notes', methods=['GET'])
 def get_notes():
@@ -73,4 +169,22 @@ def search_notes():
     ).order_by(Note.updated_at.desc()).all()
     
     return jsonify([note.to_dict() for note in notes])
+
+@note_bp.route('/translate', methods=['POST'])
+def translate_note():
+    """Translate the open note title and content. Does not save the note."""
+    data = request.json or {}
+    target = data.get('target')
+    if target not in ALLOWED_TARGETS:
+        return jsonify({'error': 'Unsupported target language'}), 400
+    title = data.get('title') or ''
+    content = data.get('content') or ''
+    if not isinstance(title, str) or not isinstance(content, str):
+        return jsonify({'error': 'Title and content must be text'}), 400
+    if not title.strip() and not content.strip():
+        return jsonify({'error': 'Title and content are required'}), 400
+    try:
+        return jsonify(_call_model(_load_prompt(target, title, content)))
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 502
 
